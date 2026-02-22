@@ -1,0 +1,17 @@
+services:
+  shipobs-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      PORT: "${PORT}"
+      ADMIN_USER: "${ADMIN_USER:-}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+    volumes:
+      - shipobs_data:/data
+    restart: unless-stopped
+
+volumes:
+  shipobs_data:
