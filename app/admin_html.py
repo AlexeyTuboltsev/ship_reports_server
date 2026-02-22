@@ -162,11 +162,11 @@ table.info td{{padding:.15rem .3rem;vertical-align:middle}}
 
 <script>
 var _rt=null;
-function setR(v){
+function setR(v){{
   localStorage.setItem('ar',v);
   if(_rt)clearTimeout(_rt);
   if(parseInt(v)>0)_rt=setTimeout(function(){{location.reload();}},v*1000);
-}
+}}
 (function(){{
   var v=localStorage.getItem('ar')||'10';
   document.getElementById('rsel').value=v;
