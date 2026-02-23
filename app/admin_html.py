@@ -6,26 +6,26 @@ def _sources_html(sources: dict) -> str:
     for name, info in sources.items():
         status = info.get("status", "pending")
         cls = {"ok": "ok", "error": "err", "pending": "pend"}.get(status, "pend")
-        last = info.get("last_fetch") or "—"
-        last_short = last[11:19] if last != "—" else "—"
+        last = info.get("last_fetch") or "\u2014"
+        last_short = last[11:19] if last != "\u2014" else "\u2014"
         n = info.get("stations", 0)
         rows.append(
             f'<tr><td class="lbl">{name.upper()}</td>'
             f'<td class="{cls}">{status}</td>'
-            f'<td class="num">{n} stn</td>'
+            f'<td class="num">{n} stations</td>'
             f'<td class="ts">{last_short}</td></tr>'
         )
-    return f'<table class="info">{"".join(rows)}</table>'
+    return f'<table class="info">{"" .join(rows)}</table>'
 
 
 def _country_html(by_country: dict, total: int) -> str:
     if not by_country:
-        return '<span class="lbl">no data yet</span>'
+        return ''
     max_count = max(by_country.values(), default=1)
     rows = []
     for country, count in sorted(by_country.items(), key=lambda x: -x[1])[:15]:
         bar_w = max(2, int(count / max_count * 100))
-        pct = f"{count / total * 100:.1f}%" if total else "—"
+        pct = f"{count / total * 100:.1f}%" if total else "\u2014"
         rows.append(
             f'<tr>'
             f'<td class="lbl">{country}</td>'
@@ -34,7 +34,7 @@ def _country_html(by_country: dict, total: int) -> str:
             f'<td class="pct">{pct}</td>'
             f'</tr>'
         )
-    return f'<table class="info">{"".join(rows)}</table>'
+    return f'<table class="info">{"" .join(rows)}</table>'
 
 
 _OSMC_HINT = (
@@ -59,10 +59,10 @@ def _settings_html(port: int, osmc_interval: int, ndbc_interval: int, max_age: i
         f'</table>'
         f'<form method="post" action="/admin/settings">'
         f'<table class="info" style="margin-bottom:.6rem">'
-        f'<tr><td class="lbl">OSMC interval</td>'
+        f'<tr><td class="lbl">OSMC fetch interval</td>'
         f'<td><input class="si" type="number" name="osmc_fetch_interval" value="{osmc_interval}" min="60" max="86400"> s'
         f'<div class="hint">{_OSMC_HINT}</div></td></tr>'
-        f'<tr><td class="lbl">NDBC interval</td>'
+        f'<tr><td class="lbl">NDBC fetch interval</td>'
         f'<td><input class="si" type="number" name="ndbc_fetch_interval" value="{ndbc_interval}" min="60" max="86400"> s'
         f'<div class="hint">{_NDBC_HINT}</div></td></tr>'
         f'<tr><td class="lbl">Max obs age</td>'
@@ -83,44 +83,44 @@ _PAGE = """\
 <title>shipobs admin</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0d1117;color:#c9d1d9;font:13px/1.6 "Courier New",monospace;padding:1.5rem}}
-h1{{color:#58a6ff;font-size:1.1rem;margin-bottom:1rem;letter-spacing:.05em}}
-h2{{color:#58a6ff;font-size:.78rem;text-transform:uppercase;letter-spacing:.12em;
-    margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid #21262d}}
+body{{background:#f6f8fa;color:#24292f;font:13px/1.6 "Courier New",monospace;padding:1.5rem}}
+h1{{color:#0969da;font-size:1.1rem;margin-bottom:1rem;letter-spacing:.05em}}
+h2{{color:#0969da;font-size:.78rem;text-transform:uppercase;letter-spacing:.12em;
+    margin-bottom:.6rem;padding-bottom:.4rem;border-bottom:1px solid #d0d7de}}
 .topbar{{display:flex;justify-content:space-between;align-items:center;
-         margin-bottom:1.2rem;font-size:.78rem;color:#8b949e}}
-.topbar select{{background:#161b22;color:#c9d1d9;border:1px solid #30363d;
+         margin-bottom:1.2rem;font-size:.78rem;color:#656d76}}
+.topbar select{{background:#fff;color:#24292f;border:1px solid #d0d7de;
                 padding:.15rem .3rem;font-size:.78rem;border-radius:3px}}
 .grid{{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}}
-.card{{background:#161b22;border:1px solid #21262d;border-radius:6px;padding:1rem}}
+.card{{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:1rem}}
 table.info{{width:100%;border-collapse:collapse}}
 table.info td{{padding:.15rem .3rem;vertical-align:middle}}
-.lbl{{color:#8b949e;min-width:5rem}}
+.lbl{{color:#656d76;min-width:5rem}}
 .num{{text-align:right;min-width:3.5rem}}
-.pct{{text-align:right;color:#8b949e;min-width:3rem}}
-.ts{{color:#8b949e;font-size:.75rem;text-align:right}}
-.ok{{color:#3fb950}}.err{{color:#f85149}}.pend{{color:#d29922}}
-.bar{{background:#1f6feb;height:.55em;border-radius:2px;display:inline-block;min-width:2px}}
-.big{{font-size:1.4rem;color:#c9d1d9;font-weight:bold}}
+.pct{{text-align:right;color:#656d76;min-width:3rem}}
+.ts{{color:#656d76;font-size:.75rem;text-align:right}}
+.ok{{color:#1a7f37}}.err{{color:#d1242f}}.pend{{color:#9a6700}}
+.bar{{background:#0969da;height:.55em;border-radius:2px;display:inline-block;min-width:2px}}
+.big{{font-size:1.4rem;color:#24292f;font-weight:bold}}
 .actions form{{margin:.3rem 0}}
 .actions button{{
-  background:#161b22;color:#58a6ff;border:1px solid #30363d;
+  background:#fff;color:#0969da;border:1px solid #d0d7de;
   padding:.35rem .8rem;cursor:pointer;font:13px "Courier New",monospace;
   border-radius:4px;width:100%;text-align:left;transition:background .15s}}
-.actions button:hover{{background:#1f6feb;color:#fff;border-color:#1f6feb}}
-.actions button.danger{{color:#f85149;border-color:#30363d}}
-.actions button.danger:hover{{background:#f85149;color:#fff;border-color:#f85149}}
-.flash{{background:#1f2d1f;border:1px solid #3fb950;color:#3fb950;
+.actions button:hover{{background:#0969da;color:#fff;border-color:#0969da}}
+.actions button.danger{{color:#d1242f;border-color:#d0d7de}}
+.actions button.danger:hover{{background:#d1242f;color:#fff;border-color:#d1242f}}
+.flash{{background:#dafbe1;border:1px solid #1a7f37;color:#1a7f37;
         padding:.4rem .8rem;margin-bottom:1rem;border-radius:4px;font-size:.82rem}}
-.flash.warn{{background:#2d2510;border-color:#d29922;color:#d29922}}
-.si{{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:.15rem .3rem;
+.flash.warn{{background:#fff8c5;border-color:#9a6700;color:#9a6700}}
+.si{{background:#f6f8fa;color:#24292f;border:1px solid #d0d7de;padding:.15rem .3rem;
      width:5rem;font:13px "Courier New",monospace;border-radius:3px}}
-.hint{{color:#8b949e;font-size:.72rem;margin-top:.2rem;line-height:1.4}}
+.hint{{color:#656d76;font-size:.72rem;margin-top:.2rem;line-height:1.4}}
 @media(max-width:600px){{.grid{{grid-template-columns:1fr}}}}
 </style>
 </head>
 <body>
-<h1>&#9881; shipobs-server / admin &nbsp;<a href="/info" style="font-size:.75rem;color:#8b949e;text-decoration:none;font-weight:normal">info &amp; sources &#8599;</a></h1>
+<h1>&#9881; shipobs-server / admin &nbsp;<a href="/info" style="font-size:.75rem;color:#656d76;text-decoration:none;font-weight:normal">info &amp; sources &#8599;</a></h1>
 {flash}
 <div class="topbar">
   <span>updated: {generated}</span>
@@ -139,11 +139,11 @@ table.info td{{padding:.15rem .3rem;vertical-align:middle}}
     <table class="info">
       <tr><td class="lbl">uptime</td><td class="value">{uptime}</td></tr>
       <tr><td class="lbl">stations</td><td><span class="big">{total_stations}</span></td></tr>
-      <tr><td class="lbl">oldest obs</td><td class="ts" style="text-align:left">{oldest}</td></tr>
+      <tr><td class="lbl">oldest observation</td><td class="ts" style="text-align:left">{oldest}</td></tr>
     </table>
   </div>
   <div class="card">
-    <h2>Sources</h2>
+    <h2>Sources \u2014 latest fetch</h2>
     {sources_html}
   </div>
 </div>
@@ -221,7 +221,7 @@ def render_admin_page(
         generated=generated,
         uptime=uptime,
         total_stations=total_stations,
-        oldest=oldest or "—",
+        oldest=oldest or "\u2014",
         sources_html=_sources_html(sources),
         total_requests=total_requests,
         country_html=_country_html(by_country, total_requests),
@@ -240,27 +240,30 @@ _INFO_PAGE = """\
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>shipobs — info</title>
+<title>shipobs \u2014 info</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0d1117;color:#c9d1d9;font:14px/1.7 "Courier New",monospace;padding:1.5rem}}
-nav{{margin-bottom:1.5rem;font-size:.8rem}}
-nav a{{color:#58a6ff;text-decoration:none}}
+body{{background:#f6f8fa;color:#24292f;font:14px/1.7 Georgia,serif;padding:1.5rem}}
+nav{{margin-bottom:1.5rem;font-size:.8rem;font-family:"Courier New",monospace}}
+nav a{{color:#0969da;text-decoration:none}}
 nav a:hover{{text-decoration:underline}}
 .content{{max-width:780px}}
-h1{{color:#58a6ff;font-size:1.1rem;margin:1.2rem 0 .5rem}}
-h2{{color:#58a6ff;font-size:.95rem;margin:1.2rem 0 .4rem;padding-bottom:.3rem;border-bottom:1px solid #21262d}}
-h3{{color:#c9d1d9;font-size:.85rem;margin:1rem 0 .3rem}}
-p{{margin-bottom:.8rem;color:#c9d1d9}}
-a{{color:#58a6ff;text-decoration:none}}
+h1{{color:#0969da;font-size:1.2rem;margin:1.2rem 0 .5rem;font-family:"Courier New",monospace}}
+h2{{color:#0969da;font-size:1rem;margin:1.4rem 0 .4rem;padding-bottom:.3rem;border-bottom:1px solid #d0d7de;font-family:"Courier New",monospace}}
+h3{{color:#24292f;font-size:.9rem;margin:1rem 0 .3rem;font-family:"Courier New",monospace}}
+p{{margin-bottom:.8rem}}
+a{{color:#0969da;text-decoration:none}}
 a:hover{{text-decoration:underline}}
-hr{{border:none;border-top:1px solid #21262d;margin:1.2rem 0}}
-ul{{margin:.4rem 0 .8rem 1.2rem}}
-li{{margin:.2rem 0}}
+hr{{border:none;border-top:1px solid #d0d7de;margin:1.2rem 0}}
+ul{{margin:.4rem 0 .8rem 1.4rem}}
+li{{margin:.25rem 0}}
 table{{border-collapse:collapse;margin:.5rem 0 .8rem;width:100%}}
-td{{padding:.3rem .6rem;border:1px solid #21262d;vertical-align:top}}
-tr:first-child td{{color:#8b949e;font-size:.8rem}}
-b{{color:#e6edf3}}
+td{{padding:.35rem .6rem;border:1px solid #d0d7de;vertical-align:top}}
+tr:first-child td{{color:#656d76;font-size:.8rem;background:#f0f3f6}}
+b{{color:#0969da}}
+code{{background:#eef0f3;padding:.1rem .3rem;border-radius:3px;font-size:.85rem;font-family:"Courier New",monospace}}
+pre{{background:#eef0f3;padding:.7rem 1rem;border-radius:4px;overflow-x:auto;margin:.5rem 0 .8rem}}
+pre code{{background:none;padding:0}}
 </style>
 </head>
 <body>

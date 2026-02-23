@@ -3,12 +3,15 @@
 
 Usage: python tools/gen_info_html.py INFO.md app/info_html.py
 """
+import html
 import re
 import sys
 
 
 def inline_fmt(text):
-    """Apply inline markdown: links, bold, italic."""
+    """Apply inline markdown: code, links, bold, italic."""
+    # Inline code first (before other substitutions, to protect content)
+    text = re.sub(r'`([^`]+)`', lambda m: f'<code>{html.escape(m.group(1))}</code>', text)
     text = re.sub(r'<(https?://[^>]+)>', r'<a href="\1">\1</a>', text)
     text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
     text = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', text)
@@ -62,6 +65,8 @@ def convert(md_text):
     para_buf = []
     list_stack = []
     in_table = False
+    in_code = False
+    code_buf = []
 
     def flush_para():
         nonlocal para_buf
@@ -82,6 +87,23 @@ def convert(md_text):
 
     for idx, line in enumerate(lines):
         stripped = line.rstrip()
+
+        # Fenced code block
+        if stripped.startswith('```'):
+            if not in_code:
+                flush_para()
+                close_lists_to(0)
+                close_table()
+                in_code = True
+                code_buf = []
+            else:
+                parts.append('<pre><code>' + '\n'.join(html.escape(l) for l in code_buf) + '</code></pre>')
+                in_code = False
+                code_buf = []
+            continue
+        if in_code:
+            code_buf.append(stripped)
+            continue
 
         if not stripped.strip():
             flush_para()
@@ -147,6 +169,8 @@ def convert(md_text):
     flush_para()
     close_lists_to(0)
     close_table()
+    if in_code and code_buf:
+        parts.append('<pre><code>' + '\n'.join(html.escape(l) for l in code_buf) + '</code></pre>')
     return '\n'.join(parts)
 
 
