@@ -37,19 +37,37 @@ def _country_html(by_country: dict, total: int) -> str:
     return f'<table class="info">{"".join(rows)}</table>'
 
 
+_OSMC_HINT = (
+    "OSMC collects global GTS observations from ships, buoys, and coastal stations. "
+    "GTS has an inherent reporting delay of 1\u20132 hours, so fetching more often "
+    "than every 15 min gives no benefit. Default: 900 s (15 min)."
+)
+_NDBC_HINT = (
+    "NDBC publishes US buoy and coastal station data with only a few minutes of delay "
+    "\u2014 near real-time. Default: 300 s (5 min)."
+)
+_MAX_AGE_HINT = "Observations older than this are discarded from the in-memory store. Default: 12 h."
+
+
 def _settings_html(port: int, osmc_interval: int, ndbc_interval: int, max_age: int) -> str:
     return (
         f'<table class="info" style="margin-bottom:.7rem">'
-        f'<tr><td class="lbl">API port</td><td class="value">{port}</td></tr>'
+        f'<tr><td class="lbl">API port</td>'
+        f'<td class="value">{port}'
+        f'<div class="hint">Port the observation API listens on. Set in .env and docker-compose.yml.</div>'
+        f'</td></tr>'
         f'</table>'
         f'<form method="post" action="/admin/settings">'
         f'<table class="info" style="margin-bottom:.6rem">'
         f'<tr><td class="lbl">OSMC interval</td>'
-        f'<td><input class="si" type="number" name="osmc_fetch_interval" value="{osmc_interval}" min="60" max="86400"> s</td></tr>'
+        f'<td><input class="si" type="number" name="osmc_fetch_interval" value="{osmc_interval}" min="60" max="86400"> s'
+        f'<div class="hint">{_OSMC_HINT}</div></td></tr>'
         f'<tr><td class="lbl">NDBC interval</td>'
-        f'<td><input class="si" type="number" name="ndbc_fetch_interval" value="{ndbc_interval}" min="60" max="86400"> s</td></tr>'
+        f'<td><input class="si" type="number" name="ndbc_fetch_interval" value="{ndbc_interval}" min="60" max="86400"> s'
+        f'<div class="hint">{_NDBC_HINT}</div></td></tr>'
         f'<tr><td class="lbl">Max obs age</td>'
-        f'<td><input class="si" type="number" name="max_obs_age_hours" value="{max_age}" min="1" max="168"> h</td></tr>'
+        f'<td><input class="si" type="number" name="max_obs_age_hours" value="{max_age}" min="1" max="168"> h'
+        f'<div class="hint">{_MAX_AGE_HINT}</div></td></tr>'
         f'</table>'
         f'<button type="submit">&#10003; Save settings</button>'
         f'</form>'
@@ -97,11 +115,12 @@ table.info td{{padding:.15rem .3rem;vertical-align:middle}}
 .flash.warn{{background:#2d2510;border-color:#d29922;color:#d29922}}
 .si{{background:#0d1117;color:#c9d1d9;border:1px solid #30363d;padding:.15rem .3rem;
      width:5rem;font:13px "Courier New",monospace;border-radius:3px}}
+.hint{{color:#8b949e;font-size:.72rem;margin-top:.2rem;line-height:1.4}}
 @media(max-width:600px){{.grid{{grid-template-columns:1fr}}}}
 </style>
 </head>
 <body>
-<h1>&#9881; shipobs-server / admin</h1>
+<h1>&#9881; shipobs-server / admin &nbsp;<a href="/info" style="font-size:.75rem;color:#8b949e;text-decoration:none;font-weight:normal">info &amp; sources &#8599;</a></h1>
 {flash}
 <div class="topbar">
   <span>updated: {generated}</span>
@@ -213,3 +232,46 @@ def render_admin_page(
             settings.max_obs_age_hours,
         ),
     )
+
+
+_INFO_PAGE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shipobs — info</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0d1117;color:#c9d1d9;font:14px/1.7 "Courier New",monospace;padding:1.5rem}}
+nav{{margin-bottom:1.5rem;font-size:.8rem}}
+nav a{{color:#58a6ff;text-decoration:none}}
+nav a:hover{{text-decoration:underline}}
+.content{{max-width:780px}}
+h1{{color:#58a6ff;font-size:1.1rem;margin:1.2rem 0 .5rem}}
+h2{{color:#58a6ff;font-size:.95rem;margin:1.2rem 0 .4rem;padding-bottom:.3rem;border-bottom:1px solid #21262d}}
+h3{{color:#c9d1d9;font-size:.85rem;margin:1rem 0 .3rem}}
+p{{margin-bottom:.8rem;color:#c9d1d9}}
+a{{color:#58a6ff;text-decoration:none}}
+a:hover{{text-decoration:underline}}
+hr{{border:none;border-top:1px solid #21262d;margin:1.2rem 0}}
+ul{{margin:.4rem 0 .8rem 1.2rem}}
+li{{margin:.2rem 0}}
+table{{border-collapse:collapse;margin:.5rem 0 .8rem;width:100%}}
+td{{padding:.3rem .6rem;border:1px solid #21262d;vertical-align:top}}
+tr:first-child td{{color:#8b949e;font-size:.8rem}}
+b{{color:#e6edf3}}
+</style>
+</head>
+<body>
+<nav><a href="/admin">&#8592; admin</a></nav>
+<div class="content">
+{info_body}
+</div>
+</body>
+</html>
+"""
+
+
+def render_info_page(info_html: str) -> str:
+    return _INFO_PAGE.format(info_body=info_html)
