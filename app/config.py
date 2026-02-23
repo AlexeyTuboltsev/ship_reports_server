@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+try:
+    APP_VERSION = _pkg_version("shipobs-server")
+except PackageNotFoundError:
+    APP_VERSION = "dev"
 
 OSMC_BASE_URL = (
     "https://osmc.noaa.gov/erddap/tabledap/OSMC_flattened.csv"
@@ -20,6 +26,8 @@ NDBC_ACTIVE_STATIONS_URL = (
 PURGE_INTERVAL_SECONDS = 15 * 60  # 15 minutes
 
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "/data/settings.json")
+FETCH_HISTORY_FILE = os.getenv("FETCH_HISTORY_FILE", "/data/fetch_history.jsonl")
+REQUEST_LOG_FILE = os.getenv("REQUEST_LOG_FILE", "/data/request_log.jsonl")
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = int(os.getenv("PORT", "8080"))

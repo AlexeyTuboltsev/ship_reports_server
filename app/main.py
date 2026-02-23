@@ -6,7 +6,7 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
@@ -14,12 +14,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from app.admin_html import render_admin_page, render_info_page
-from app import settings_store, stats
+from app.admin_html import render_admin_page, render_fetch_history_page, render_info_page, render_request_log_page
+from app import fetch_history, request_log, settings_store, stats
 from app.config import (
     ADMIN_PASSWORD,
     ADMIN_USER,
+    APP_VERSION,
+    FETCH_HISTORY_FILE,
     PURGE_INTERVAL_SECONDS,
+    REQUEST_LOG_FILE,
     SERVER_PORT,
     SETTINGS_FILE,
 )
@@ -47,6 +50,7 @@ _source_status: dict[str, dict] = {
     "osmc": {"last_fetch": None, "stations": 0, "status": "pending"},
     "ndbc": {"last_fetch": None, "stations": 0, "status": "pending"},
 }
+_osmc_since: datetime | None = None  # None = full lookback on first fetch
 _ndbc_meta = NDBCMetadata()
 
 # Admin auth
@@ -79,32 +83,46 @@ def _parse_age(age_str: str) -> float:
 
 async def _fetch_osmc_task(client: httpx.AsyncClient) -> None:
     """Fetch OSMC data and update the store."""
+    global _osmc_since
     try:
-        stations = await fetch_osmc(client)
+        fetch_start = datetime.now(timezone.utc)
+        stations = await fetch_osmc(client, since=_osmc_since)
         store.update_from_osmc(stations)
-        _source_status["osmc"] = {
-            "last_fetch": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "stations": len(stations),
-            "status": "ok",
-        }
-    except Exception:
+        # Next fetch: only ask for data after this fetch started (minus 5 min overlap
+        # to catch any observations that arrive slightly late at the OSMC endpoint).
+        _osmc_since = fetch_start - timedelta(minutes=5)
+        ts = fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _source_status["osmc"] = {"last_fetch": ts, "stations": len(stations), "status": "ok"}
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=ts, source="osmc", status="ok", stations=len(stations), error="",
+        ))
+    except Exception as exc:
         logger.exception("OSMC fetch failed")
         _source_status["osmc"]["status"] = "error"
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            source="osmc", status="error", stations=0, error=str(exc),
+        ))
 
 
 async def _fetch_ndbc_task(client: httpx.AsyncClient) -> None:
     """Fetch NDBC data and update the store."""
     try:
+        fetch_start = datetime.now(timezone.utc)
         stations = await fetch_ndbc_latest(client, _ndbc_meta)
         store.update_from_ndbc(stations)
-        _source_status["ndbc"] = {
-            "last_fetch": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "stations": len(stations),
-            "status": "ok",
-        }
-    except Exception:
+        ts = fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _source_status["ndbc"] = {"last_fetch": ts, "stations": len(stations), "status": "ok"}
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=ts, source="ndbc", status="ok", stations=len(stations), error="",
+        ))
+    except Exception as exc:
         logger.exception("NDBC fetch failed")
         _source_status["ndbc"]["status"] = "error"
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            source="ndbc", status="error", stations=0, error=str(exc),
+        ))
 
 
 async def _scheduler(client: httpx.AsyncClient) -> None:
@@ -204,6 +222,8 @@ async def get_observations(
     max_age: str = Query("6h"),
     types: str = Query("all"),
 ):
+    t0 = time.monotonic()
+
     # Track request stats; fire off GeoIP lookup for new IPs
     xff = request.headers.get("x-forwarded-for")
     client_ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
@@ -216,22 +236,51 @@ async def get_observations(
     if types != "all":
         type_filter = {t.strip() for t in types.split(",") if t.strip()}
 
-    results = store.query(
-        lat_min=lat_min,
-        lat_max=lat_max,
-        lon_min=lon_min,
-        lon_max=lon_max,
-        max_age_hours=age_hours,
-        types=type_filter,
-    )
+    bbox = f"{lat_min:.1f},{lat_max:.1f},{lon_min:.1f},{lon_max:.1f}"
+    req_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    return JSONResponse(
-        content={
-            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "count": len(results),
-            "stations": [s.to_api_dict() for s in results],
-        }
-    )
+    try:
+        results = store.query(
+            lat_min=lat_min,
+            lat_max=lat_max,
+            lon_min=lon_min,
+            lon_max=lon_max,
+            max_age_hours=age_hours,
+            types=type_filter,
+        )
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        request_log.record(REQUEST_LOG_FILE, request_log.RequestEvent(
+            time=req_time,
+            country=stats.get_country(client_ip),
+            bbox=bbox,
+            max_age=max_age,
+            types=types,
+            count=len(results),
+            duration_ms=duration_ms,
+            status=200,
+            error="",
+        ))
+        return JSONResponse(
+            content={
+                "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "count": len(results),
+                "stations": [s.to_api_dict() for s in results],
+            }
+        )
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        request_log.record(REQUEST_LOG_FILE, request_log.RequestEvent(
+            time=req_time,
+            country=stats.get_country(client_ip),
+            bbox=bbox,
+            max_age=max_age,
+            types=types,
+            count=0,
+            duration_ms=duration_ms,
+            status=500,
+            error=str(exc),
+        ))
+        raise
 
 
 @app.get("/api/v1/status")
@@ -281,14 +330,53 @@ async def admin_page(msg: str = ""):
         by_country=s["by_country"],
         port=SERVER_PORT,
         settings=settings_store.settings,
+        version=APP_VERSION,
         flash=msg,
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin/fetch-history", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
+async def fetch_history_page(
+    page: int = Query(1, ge=1),
+    source: str = Query(""),
+    status: str = Query(""),
+):
+    events, total = fetch_history.load_page(
+        FETCH_HISTORY_FILE, page=page, source=source, status=status,
+    )
+    html = render_fetch_history_page(
+        events=events,
+        total=total,
+        page=page,
+        page_size=fetch_history.PAGE_SIZE,
+        source=source,
+        status=status,
+        version=APP_VERSION,
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin/request-log", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
+async def request_log_page(
+    page: int = Query(1, ge=1),
+    status: str = Query(""),
+):
+    events, total = request_log.load_page(REQUEST_LOG_FILE, page=page, status=status)
+    html = render_request_log_page(
+        events=events,
+        total=total,
+        page=page,
+        page_size=request_log.PAGE_SIZE,
+        status=status,
+        version=APP_VERSION,
     )
     return HTMLResponse(content=html)
 
 
 @app.get("/info", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
 async def info_page():
-    return HTMLResponse(content=render_info_page(INFO_HTML))
+    return HTMLResponse(content=render_info_page(INFO_HTML, version=APP_VERSION))
 
 
 @app.post("/admin/settings", dependencies=[Depends(_require_admin)])

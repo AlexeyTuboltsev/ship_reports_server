@@ -53,6 +53,13 @@ def update_country(ip: str, country: str) -> None:
         _country_counts[country] += hits
 
 
+def get_country(ip: str) -> str:
+    """Return the resolved country code for this IP, or '' if not yet known."""
+    if _is_private(ip):
+        return "Local"
+    return _ip_country_cache.get(ip, "")
+
+
 def get_stats() -> dict:
     combined: Counter[str] = Counter(_country_counts)
     pending_hits = sum(_ip_hit_count.values())

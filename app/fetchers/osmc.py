@@ -58,9 +58,13 @@ def normalize_platform_type(raw: str) -> str:
     return PLATFORM_TYPE_MAP.get(raw.strip().upper(), "other")
 
 
-def _build_url() -> str:
-    """Build the OSMC ERDDAP CSV request URL with a time filter."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=OSMC_LOOKBACK_HOURS)
+def _build_url(since: datetime | None = None) -> str:
+    """Build the OSMC ERDDAP CSV request URL with a time filter.
+
+    If *since* is given, request only data after that timestamp (incremental).
+    Otherwise fall back to the full lookback window (first fetch / cold start).
+    """
+    cutoff = since if since is not None else datetime.now(timezone.utc) - timedelta(hours=OSMC_LOOKBACK_HOURS)
     time_filter = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
     return f"{OSMC_BASE_URL}?{OSMC_FIELDS}&time>={time_filter}"
 
@@ -118,7 +122,7 @@ def parse_osmc_csv(text: str) -> list[ObservationStation]:
         raw_type = (row.get("platform_type") or "").strip()
 
         wind_dir = _parse_float(row.get("winddir", ""))
-        # WMO FM 13: dd=00 means calm/variable, not "from north" (dd=36 → 360°).
+        # WMO FM 13: dd=00 means calm/variable, not "from north" (dd=36 -> 360deg).
         # OSMC ships report 0.0 when direction is unavailable.
         if wind_dir == 0.0:
             wind_dir = None
@@ -151,9 +155,13 @@ def parse_osmc_csv(text: str) -> list[ObservationStation]:
     return stations
 
 
-async def fetch_osmc(client: httpx.AsyncClient) -> list[ObservationStation]:
-    """Fetch and parse OSMC ERDDAP data."""
-    url = _build_url()
+async def fetch_osmc(client: httpx.AsyncClient, since: datetime | None = None) -> list[ObservationStation]:
+    """Fetch and parse OSMC ERDDAP data.
+
+    Pass *since* to request only observations newer than that timestamp
+    (incremental mode).  Omit for a full lookback fetch.
+    """
+    url = _build_url(since)
     logger.info("Fetching OSMC: %s", url[:120])
     resp = await client.get(url, timeout=HTTP_TIMEOUT_SECONDS)
     resp.raise_for_status()
