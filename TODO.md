@@ -24,7 +24,7 @@
 - [x] Container auto-restart (restart: unless-stopped)
 - [x] Docker log rotation (max-size: 10m, max-file: 3)
 - [x] Cloudflare real IP: CF-Connecting-IP checked first before X-Forwarded-For
-- [ ] External uptime monitoring (UptimeRobot → /api/v1/status)
+- [x] External uptime monitoring (UptimeRobot → /api/v1/status)
 
 ## Tests
 - [ ] Review existing test coverage
