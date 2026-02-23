@@ -122,7 +122,7 @@ def parse_osmc_csv(text: str) -> list[ObservationStation]:
         raw_type = (row.get("platform_type") or "").strip()
 
         wind_dir = _parse_float(row.get("winddir", ""))
-        # WMO FM 13: dd=00 means calm/variable, not "from north" (dd=36 -> 360 deg).
+        # WMO FM 13: dd=00 means calm/variable, not "from north" (dd=36 -> 360deg).
         # OSMC ships report 0.0 when direction is unavailable.
         if wind_dir == 0.0:
             wind_dir = None

@@ -182,7 +182,7 @@ def main():
         md = f.read()
     html = convert(md)
     with open(sys.argv[2], 'w', encoding='utf-8') as f:
-        f.write('# Auto-generated from INFO.md — do not edit manually.\n')
+        f.write('# Auto-generated from INFO.md -- do not edit manually.\n')
         f.write('INFO_HTML = r"""\n')
         f.write(html)
         f.write('\n"""\n')

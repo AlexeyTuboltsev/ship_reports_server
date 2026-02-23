@@ -14,11 +14,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from app.admin_html import render_admin_page, render_info_page
-from app import settings_store, stats
+from app.admin_html import render_admin_page, render_fetch_history_page, render_info_page
+from app import fetch_history, settings_store, stats
 from app.config import (
     ADMIN_PASSWORD,
     ADMIN_USER,
+    APP_VERSION,
+    FETCH_HISTORY_FILE,
     PURGE_INTERVAL_SECONDS,
     SERVER_PORT,
     SETTINGS_FILE,
@@ -57,7 +59,7 @@ _http_basic = HTTPBasic(auto_error=True)
 def _require_admin(credentials: HTTPBasicCredentials = Depends(_http_basic)):
     if not ADMIN_USER or not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin not configured: set ADMIN_USER and ADMIN_PASSWORD")
-    ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode()) and \\
+    ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode()) and \
          secrets.compare_digest(credentials.password.encode(), ADMIN_PASSWORD.encode())
     if not ok:
         raise HTTPException(
@@ -88,29 +90,38 @@ async def _fetch_osmc_task(client: httpx.AsyncClient) -> None:
         # Next fetch: only ask for data after this fetch started (minus 5 min overlap
         # to catch any observations that arrive slightly late at the OSMC endpoint).
         _osmc_since = fetch_start - timedelta(minutes=5)
-        _source_status["osmc"] = {
-            "last_fetch": fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "stations": len(stations),
-            "status": "ok",
-        }
-    except Exception:
+        ts = fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _source_status["osmc"] = {"last_fetch": ts, "stations": len(stations), "status": "ok"}
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=ts, source="osmc", status="ok", stations=len(stations), error="",
+        ))
+    except Exception as exc:
         logger.exception("OSMC fetch failed")
         _source_status["osmc"]["status"] = "error"
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            source="osmc", status="error", stations=0, error=str(exc),
+        ))
 
 
 async def _fetch_ndbc_task(client: httpx.AsyncClient) -> None:
     """Fetch NDBC data and update the store."""
     try:
+        fetch_start = datetime.now(timezone.utc)
         stations = await fetch_ndbc_latest(client, _ndbc_meta)
         store.update_from_ndbc(stations)
-        _source_status["ndbc"] = {
-            "last_fetch": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "stations": len(stations),
-            "status": "ok",
-        }
-    except Exception:
+        ts = fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        _source_status["ndbc"] = {"last_fetch": ts, "stations": len(stations), "status": "ok"}
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=ts, source="ndbc", status="ok", stations=len(stations), error="",
+        ))
+    except Exception as exc:
         logger.exception("NDBC fetch failed")
         _source_status["ndbc"]["status"] = "error"
+        fetch_history.record(FETCH_HISTORY_FILE, fetch_history.FetchEvent(
+            time=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            source="ndbc", status="error", stations=0, error=str(exc),
+        ))
 
 
 async def _scheduler(client: httpx.AsyncClient) -> None:
@@ -287,14 +298,36 @@ async def admin_page(msg: str = ""):
         by_country=s["by_country"],
         port=SERVER_PORT,
         settings=settings_store.settings,
+        version=APP_VERSION,
         flash=msg,
+    )
+    return HTMLResponse(content=html)
+
+
+@app.get("/admin/fetch-history", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
+async def fetch_history_page(
+    page: int = Query(1, ge=1),
+    source: str = Query(""),
+    status: str = Query(""),
+):
+    events, total = fetch_history.load_page(
+        FETCH_HISTORY_FILE, page=page, source=source, status=status,
+    )
+    html = render_fetch_history_page(
+        events=events,
+        total=total,
+        page=page,
+        page_size=fetch_history.PAGE_SIZE,
+        source=source,
+        status=status,
+        version=APP_VERSION,
     )
     return HTMLResponse(content=html)
 
 
 @app.get("/info", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
 async def info_page():
-    return HTMLResponse(content=render_info_page(INFO_HTML))
+    return HTMLResponse(content=render_info_page(INFO_HTML, version=APP_VERSION))
 
 
 @app.post("/admin/settings", dependencies=[Depends(_require_admin)])

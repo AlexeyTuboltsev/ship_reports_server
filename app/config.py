@@ -26,6 +26,7 @@ NDBC_ACTIVE_STATIONS_URL = (
 PURGE_INTERVAL_SECONDS = 15 * 60  # 15 minutes
 
 SETTINGS_FILE = os.getenv("SETTINGS_FILE", "/data/settings.json")
+FETCH_HISTORY_FILE = os.getenv("FETCH_HISTORY_FILE", "/data/fetch_history.jsonl")
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = int(os.getenv("PORT", "8080"))
