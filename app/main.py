@@ -6,7 +6,7 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Query, Request
@@ -47,6 +47,7 @@ _source_status: dict[str, dict] = {
     "osmc": {"last_fetch": None, "stations": 0, "status": "pending"},
     "ndbc": {"last_fetch": None, "stations": 0, "status": "pending"},
 }
+_osmc_since: datetime | None = None  # None = full lookback on first fetch
 _ndbc_meta = NDBCMetadata()
 
 # Admin auth
@@ -56,7 +57,7 @@ _http_basic = HTTPBasic(auto_error=True)
 def _require_admin(credentials: HTTPBasicCredentials = Depends(_http_basic)):
     if not ADMIN_USER or not ADMIN_PASSWORD:
         raise HTTPException(status_code=503, detail="Admin not configured: set ADMIN_USER and ADMIN_PASSWORD")
-    ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode()) and \
+    ok = secrets.compare_digest(credentials.username.encode(), ADMIN_USER.encode()) and \\
          secrets.compare_digest(credentials.password.encode(), ADMIN_PASSWORD.encode())
     if not ok:
         raise HTTPException(
@@ -79,11 +80,16 @@ def _parse_age(age_str: str) -> float:
 
 async def _fetch_osmc_task(client: httpx.AsyncClient) -> None:
     """Fetch OSMC data and update the store."""
+    global _osmc_since
     try:
-        stations = await fetch_osmc(client)
+        fetch_start = datetime.now(timezone.utc)
+        stations = await fetch_osmc(client, since=_osmc_since)
         store.update_from_osmc(stations)
+        # Next fetch: only ask for data after this fetch started (minus 5 min overlap
+        # to catch any observations that arrive slightly late at the OSMC endpoint).
+        _osmc_since = fetch_start - timedelta(minutes=5)
         _source_status["osmc"] = {
-            "last_fetch": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "last_fetch": fetch_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "stations": len(stations),
             "status": "ok",
         }
