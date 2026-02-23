@@ -5,8 +5,11 @@ RUN useradd -m appuser && mkdir -p /data && chown appuser /data
 WORKDIR /app
 COPY pyproject.toml .
 COPY app/ app/
+COPY INFO.md .
+COPY tools/ tools/
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . && \
+    python tools/gen_info_html.py INFO.md app/info_html.py
 
 USER appuser
 EXPOSE 8080

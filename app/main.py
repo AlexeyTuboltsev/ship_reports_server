@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
-from app.admin_html import render_admin_page
+from app.admin_html import render_admin_page, render_info_page
 from app import settings_store, stats
 from app.config import (
     ADMIN_PASSWORD,
@@ -23,6 +23,11 @@ from app.config import (
     SERVER_PORT,
     SETTINGS_FILE,
 )
+try:
+    from app.info_html import INFO_HTML
+except ImportError:
+    INFO_HTML = "<p>Info page not generated. Run: <code>python tools/gen_info_html.py INFO.md app/info_html.py</code></p>"
+
 from app.fetchers.ndbc import NDBCMetadata, fetch_ndbc_latest, fetch_ndbc_metadata
 from app.fetchers.osmc import fetch_osmc
 from app.store import StationStore
@@ -279,6 +284,11 @@ async def admin_page(msg: str = ""):
         flash=msg,
     )
     return HTMLResponse(content=html)
+
+
+@app.get("/info", response_class=HTMLResponse, dependencies=[Depends(_require_admin)])
+async def info_page():
+    return HTMLResponse(content=render_info_page(INFO_HTML))
 
 
 @app.post("/admin/settings", dependencies=[Depends(_require_admin)])

@@ -1,6 +1,9 @@
 # Secrets — never commit
 .env
 
+# Generated files
+app/info_html.py
+
 # Python
 __pycache__/
 *.py[cod]
