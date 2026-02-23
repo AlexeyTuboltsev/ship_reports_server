@@ -7,7 +7,7 @@ def _sources_html(sources: dict) -> str:
         status = info.get("status", "pending")
         cls = {"ok": "ok", "error": "err", "pending": "pend"}.get(status, "pend")
         last = info.get("last_fetch") or "\u2014"
-        last_short = last[11:19] if last != "\u2014" else "\u2014"
+        last_short = (last[11:19] + " UTC") if last != "\u2014" else "\u2014"
         n = info.get("stations", 0)
         rows.append(
             f'<tr><td class="lbl">{name.upper()}</td>'
@@ -120,17 +120,17 @@ table.info td{{padding:.15rem .3rem;vertical-align:middle}}
 </style>
 </head>
 <body>
-<h1>&#9881; shipobs-server / admin &nbsp;<a href="/info" style="font-size:.75rem;color:#656d76;text-decoration:none;font-weight:normal">info &amp; sources &#8599;</a></h1>
+<h1>&#9881; shipobs-server / admin &nbsp;<a href="/info" style="font-size:.75rem;color:#656d76;text-decoration:none;font-weight:normal">info &amp; sources &#8599;</a> &nbsp;<a href="/admin/fetch-history" style="font-size:.75rem;color:#656d76;text-decoration:none;font-weight:normal">fetch history &#8599;</a> &nbsp;<a href="/admin/request-log" style="font-size:.75rem;color:#656d76;text-decoration:none;font-weight:normal">request log &#8599;</a></h1>
 {flash}
 <div class="topbar">
-  <span>updated: {generated}</span>
+  <span>v{version}</span>
   <span>auto-refresh:&nbsp;<select id="rsel" onchange="setR(this.value)">
     <option value="0">off</option>
     <option value="5">5 s</option>
     <option value="10">10 s</option>
     <option value="30">30 s</option>
     <option value="60">60 s</option>
-  </select></span>
+  </select>&nbsp;&nbsp;updated: {generated}</span>
 </div>
 
 <div class="grid">
@@ -138,7 +138,7 @@ table.info td{{padding:.15rem .3rem;vertical-align:middle}}
     <h2>Server</h2>
     <table class="info">
       <tr><td class="lbl">uptime</td><td class="value">{uptime}</td></tr>
-      <tr><td class="lbl">stations</td><td><span class="big">{total_stations}</span></td></tr>
+      <tr><td class="lbl">stations (deduplicated)</td><td><span class="big">{total_stations}</span></td></tr>
       <tr><td class="lbl">oldest observation</td><td class="ts" style="text-align:left">{oldest}</td></tr>
     </table>
   </div>
@@ -208,6 +208,7 @@ def render_admin_page(
     by_country: dict,
     port: int,
     settings,
+    version: str = "",
     flash: str = "",
     flash_warn: bool = False,
 ) -> str:
@@ -231,6 +232,7 @@ def render_admin_page(
             settings.ndbc_fetch_interval,
             settings.max_obs_age_hours,
         ),
+        version=version,
     )
 
 
@@ -267,7 +269,7 @@ pre code{{background:none;padding:0}}
 </style>
 </head>
 <body>
-<nav><a href="/admin">&#8592; admin</a></nav>
+<nav><a href="/admin">&#8592; admin</a>&nbsp;&nbsp;v{version}</nav>
 <div class="content">
 {info_body}
 </div>
@@ -276,5 +278,353 @@ pre code{{background:none;padding:0}}
 """
 
 
-def render_info_page(info_html: str) -> str:
-    return _INFO_PAGE.format(info_body=info_html)
+def render_info_page(info_html: str, version: str = "") -> str:
+    return _INFO_PAGE.format(info_body=info_html, version=version)
+
+
+_FETCH_HISTORY_PAGE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shipobs \u2014 fetch history</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#f6f8fa;color:#24292f;font:13px/1.6 "Courier New",monospace;padding:1.5rem}}
+nav{{margin-bottom:1.2rem;font-size:.8rem}}
+nav a{{color:#0969da;text-decoration:none}}
+nav a:hover{{text-decoration:underline}}
+h1{{color:#0969da;font-size:1.1rem;margin-bottom:.6rem;letter-spacing:.05em}}
+.meta{{color:#656d76;font-size:.78rem;margin-bottom:.8rem}}
+table{{width:100%;border-collapse:collapse;background:#fff;border:1px solid #d0d7de;border-radius:6px;overflow:hidden}}
+th{{background:#f0f3f6;color:#656d76;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
+    padding:.4rem .6rem;border-bottom:1px solid #d0d7de;text-align:left;white-space:nowrap}}
+td{{padding:.25rem .6rem;border-bottom:1px solid #f0f3f6;vertical-align:top}}
+tr:last-child td{{border-bottom:none}}
+.ok{{color:#1a7f37}}.err{{color:#d1242f}}
+.num{{text-align:right}}
+.ts{{color:#656d76;white-space:nowrap}}
+.err-msg{{color:#d1242f;font-size:.75rem;word-break:break-all}}
+.topbar{{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;font-size:.78rem;color:#656d76}}
+.topbar h1{{margin-bottom:0}}
+.topbar select{{background:#fff;color:#24292f;border:1px solid #d0d7de;padding:.15rem .3rem;font-size:.78rem;border-radius:3px}}
+.filters{{display:flex;gap:1.5rem;margin-bottom:.8rem;font-size:.78rem;flex-wrap:wrap}}
+.filters span{{color:#656d76}}
+.filters a{{color:#0969da;text-decoration:none;padding:.1rem .35rem;border-radius:3px}}
+.filters a:hover{{background:#e8f0fe}}
+.filters a.active{{background:#0969da;color:#fff}}
+.pager{{margin-top:1rem;font-size:.8rem;display:flex;gap:1.2rem;align-items:center;color:#656d76}}
+.pager a{{color:#0969da;text-decoration:none}}
+.pager a:hover{{text-decoration:underline}}
+.pager .dim{{color:#d0d7de}}
+</style>
+</head>
+<body>
+<nav><a href="/admin">&#8592; admin</a>&nbsp;&nbsp;v{{version}}</nav>
+<div class="topbar">
+  <h1>Fetch History</h1>
+  <span>auto-refresh:&nbsp;<select id="rsel" onchange="setR(this.value)">
+    <option value="0">off</option>
+    <option value="5">5 s</option>
+    <option value="10">10 s</option>
+    <option value="30">30 s</option>
+    <option value="60">60 s</option>
+  </select></span>
+</div>
+<p class="meta">{total} events &nbsp;&#8212;&nbsp; page {page} of {total_pages}</p>
+{filters}
+{table}
+{pager}
+<script>
+var _rt=null;
+function setR(v){{
+  localStorage.setItem('ar',v);
+  if(_rt)clearTimeout(_rt);
+  if(parseInt(v)>0)_rt=setTimeout(function(){{location.reload();}},v*1000);
+}}
+(function(){{
+  var v=localStorage.getItem('ar')||'10';
+  document.getElementById('rsel').value=v;
+  setR(v);
+}})();
+</script>
+</body>
+</html>
+"""
+
+
+def _fetch_history_table(events: list) -> str:
+    if not events:
+        rows = '<tr><td colspan="5" style="color:#656d76;text-align:center;padding:.8rem">no matching entries</td></tr>'
+    else:
+        row_parts = []
+        for e in events:
+            cls = "ok" if e.status == "ok" else "err"
+            stn = str(e.stations) if e.status == "ok" else "\u2014"
+            err = f'<span class="err-msg">{e.error}</span>' if e.error else ""
+            row_parts.append(
+                f'<tr>'
+                f'<td class="ts">{e.time}</td>'
+                f'<td>{e.source.upper()}</td>'
+                f'<td class="{cls}">{e.status}</td>'
+                f'<td class="num">{stn}</td>'
+                f'<td>{err}</td>'
+                f'</tr>'
+            )
+        rows = "".join(row_parts)
+    return (
+        '<table>'
+        '<thead><tr>'
+        '<th>Time (UTC)</th><th>Source</th><th>Status</th>'
+        '<th style="text-align:right">Stations</th><th>Error</th>'
+        '</tr></thead>'
+        f'<tbody>{rows}</tbody>'
+        '</table>'
+    )
+
+
+def _filters_html(source: str, status: str) -> str:
+    def link(label: str, qs: str, active: bool) -> str:
+        cls = ' class="active"' if active else ""
+        return f'<a href="/admin/fetch-history?{qs}"{cls}>{label}</a>'
+
+    def qs(s: str, st: str) -> str:
+        parts = []
+        if s:
+            parts.append(f"source={s}")
+        if st:
+            parts.append(f"status={st}")
+        return "&".join(parts)
+
+    src_links = (
+        f'<span>source:</span>'
+        + link("all", qs("", status), source == "")
+        + link("OSMC", qs("osmc", status), source == "osmc")
+        + link("NDBC", qs("ndbc", status), source == "ndbc")
+    )
+    st_links = (
+        f'<span>status:</span>'
+        + link("all", qs(source, ""), status == "")
+        + link("ok", qs(source, "ok"), status == "ok")
+        + link("error", qs(source, "error"), status == "error")
+    )
+    return f'<div class="filters">{src_links}&nbsp;&nbsp;{st_links}</div>'
+
+
+def _pager_html(page: int, total_pages: int, source: str = "", status: str = "") -> str:
+    def url(p: int) -> str:
+        parts = [f"page={p}"]
+        if source:
+            parts.append(f"source={source}")
+        if status:
+            parts.append(f"status={status}")
+        return "/admin/fetch-history?" + "&".join(parts)
+
+    prev = (f'<a href="{url(page - 1)}">&#8592; newer</a>'
+            if page > 1 else '<span class="dim">&#8592; newer</span>')
+    nxt = (f'<a href="{url(page + 1)}">older &#8594;</a>'
+           if page < total_pages else '<span class="dim">older &#8594;</span>')
+    return f'<div class="pager">{prev}<span>page {page} / {total_pages}</span>{nxt}</div>'
+
+
+def render_fetch_history_page(
+    *,
+    events: list,
+    total: int,
+    page: int,
+    page_size: int,
+    source: str = "",
+    status: str = "",
+    version: str = "",
+) -> str:
+    import math
+    total_pages = max(1, math.ceil(total / page_size))
+    page = max(1, min(page, total_pages))
+    # _FETCH_HISTORY_PAGE uses {{ }} for CSS braces but {version} etc for values,
+    # so we format version separately via a simple replace to avoid double-format issues.
+    html = _FETCH_HISTORY_PAGE.replace("{{version}}", version)
+    return html.format(
+        total=total,
+        page=page,
+        total_pages=total_pages,
+        filters=_filters_html(source, status),
+        table=_fetch_history_table(events),
+        pager=_pager_html(page, total_pages, source, status),
+    )
+
+
+_REQUEST_LOG_PAGE = """\
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>shipobs \u2014 request log</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#f6f8fa;color:#24292f;font:13px/1.6 "Courier New",monospace;padding:1.5rem}}
+nav{{margin-bottom:1.2rem;font-size:.8rem}}
+nav a{{color:#0969da;text-decoration:none}}
+nav a:hover{{text-decoration:underline}}
+h1{{color:#0969da;font-size:1.1rem;margin-bottom:.6rem;letter-spacing:.05em}}
+.meta{{color:#656d76;font-size:.78rem;margin-bottom:.8rem}}
+table{{width:100%;border-collapse:collapse;background:#fff;border:1px solid #d0d7de;border-radius:6px;overflow:hidden}}
+th{{background:#f0f3f6;color:#656d76;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;
+    padding:.4rem .6rem;border-bottom:1px solid #d0d7de;text-align:left;white-space:nowrap}}
+td{{padding:.25rem .6rem;border-bottom:1px solid #f0f3f6;vertical-align:top}}
+tr:last-child td{{border-bottom:none}}
+.ok{{color:#1a7f37}}.err{{color:#d1242f}}
+.num{{text-align:right}}
+.ts{{color:#656d76;white-space:nowrap}}
+.dim{{color:#656d76}}
+.err-msg{{color:#d1242f;font-size:.75rem;word-break:break-all}}
+.topbar{{display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;font-size:.78rem;color:#656d76}}
+.topbar h1{{margin-bottom:0}}
+.topbar select{{background:#fff;color:#24292f;border:1px solid #d0d7de;padding:.15rem .3rem;font-size:.78rem;border-radius:3px}}
+.filters{{display:flex;gap:1.5rem;margin-bottom:.8rem;font-size:.78rem;flex-wrap:wrap}}
+.filters span{{color:#656d76}}
+.filters a{{color:#0969da;text-decoration:none;padding:.1rem .35rem;border-radius:3px}}
+.filters a:hover{{background:#e8f0fe}}
+.filters a.active{{background:#0969da;color:#fff}}
+.pager{{margin-top:1rem;font-size:.8rem;display:flex;gap:1.2rem;align-items:center;color:#656d76}}
+.pager a{{color:#0969da;text-decoration:none}}
+.pager a:hover{{text-decoration:underline}}
+.pager .dim{{color:#d0d7de}}
+</style>
+</head>
+<body>
+<nav><a href="/admin">&#8592; admin</a>&nbsp;&nbsp;v{{version}}</nav>
+<div class="topbar">
+  <h1>Request Log</h1>
+  <span>auto-refresh:&nbsp;<select id="rsel" onchange="setR(this.value)">
+    <option value="0">off</option>
+    <option value="5">5 s</option>
+    <option value="10">10 s</option>
+    <option value="30">30 s</option>
+    <option value="60">60 s</option>
+  </select></span>
+</div>
+<p class="meta">{total} requests &nbsp;&#8212;&nbsp; page {page} of {total_pages}</p>
+{filters}
+{table}
+{pager}
+<script>
+var _rt=null;
+function setR(v){{
+  localStorage.setItem('ar',v);
+  if(_rt)clearTimeout(_rt);
+  if(parseInt(v)>0)_rt=setTimeout(function(){{location.reload();}},v*1000);
+}}
+(function(){{
+  var v=localStorage.getItem('ar')||'10';
+  document.getElementById('rsel').value=v;
+  setR(v);
+}})();
+</script>
+</body>
+</html>
+"""
+
+
+def _fmt_bbox(bbox: str) -> str:
+    parts = bbox.split(",")
+    if len(parts) == 4:
+        lat_min, lat_max, lon_min, lon_max = [p.strip() for p in parts]
+        return f"lat {lat_min}..{lat_max}<br>lon {lon_min}..{lon_max}"
+    return bbox
+
+
+def _request_log_table(events: list) -> str:
+    if not events:
+        rows = '<tr><td colspan="9" style="color:#656d76;text-align:center;padding:.8rem">no matching entries</td></tr>'
+    else:
+        row_parts = []
+        for e in events:
+            status_cls = "ok" if e.status < 400 else "err"
+            country = e.country or '<span class="dim">\u2014</span>'
+            err = f'<span class="err-msg">{e.error}</span>' if e.error else ""
+            row_parts.append(
+                f'<tr>'
+                f'<td class="ts">{e.time}</td>'
+                f'<td>{country}</td>'
+                f'<td class="ts">{_fmt_bbox(e.bbox)}</td>'
+                f'<td class="dim">{e.max_age}</td>'
+                f'<td class="dim">{e.types}</td>'
+                f'<td class="num">{e.count}</td>'
+                f'<td class="num dim">{e.duration_ms}</td>'
+                f'<td class="{status_cls}">{e.status}</td>'
+                f'<td>{err}</td>'
+                f'</tr>'
+            )
+        rows = "".join(row_parts)
+    return (
+        '<table>'
+        '<thead><tr>'
+        '<th>Time (UTC)</th>'
+        '<th>Country</th>'
+        '<th>Bbox</th>'
+        '<th>Age</th>'
+        '<th>Types</th>'
+        '<th style="text-align:right">Obs</th>'
+        '<th style="text-align:right">ms</th>'
+        '<th>Status</th>'
+        '<th>Error</th>'
+        '</tr></thead>'
+        f'<tbody>{rows}</tbody>'
+        '</table>'
+    )
+
+
+def _request_status_filters_html(status: str) -> str:
+    def link(label: str, qs: str, active: bool) -> str:
+        cls = ' class="active"' if active else ""
+        return f'<a href="/admin/request-log?{qs}"{cls}>{label}</a>'
+
+    def qs(st: str) -> str:
+        return f"status={st}" if st else ""
+
+    st_links = (
+        f'<span>status:</span>'
+        + link("all", qs(""), status == "")
+        + link("ok", qs("ok"), status == "ok")
+        + link("error", qs("error"), status == "error")
+    )
+    return f'<div class="filters">{st_links}</div>'
+
+
+def _request_pager_html(page: int, total_pages: int, status: str = "") -> str:
+    def url(p: int) -> str:
+        parts = [f"page={p}"]
+        if status:
+            parts.append(f"status={status}")
+        return "/admin/request-log?" + "&".join(parts)
+
+    prev = (f'<a href="{url(page - 1)}">&#8592; newer</a>'
+            if page > 1 else '<span class="dim">&#8592; newer</span>')
+    nxt = (f'<a href="{url(page + 1)}">older &#8594;</a>'
+           if page < total_pages else '<span class="dim">older &#8594;</span>')
+    return f'<div class="pager">{prev}<span>page {page} / {total_pages}</span>{nxt}</div>'
+
+
+def render_request_log_page(
+    *,
+    events: list,
+    total: int,
+    page: int,
+    page_size: int,
+    status: str = "",
+    version: str = "",
+) -> str:
+    import math
+    total_pages = max(1, math.ceil(total / page_size))
+    page = max(1, min(page, total_pages))
+    html = _REQUEST_LOG_PAGE.replace("{{version}}", version)
+    return html.format(
+        total=total,
+        page=page,
+        total_pages=total_pages,
+        filters=_request_status_filters_html(status),
+        table=_request_log_table(events),
+        pager=_request_pager_html(page, total_pages, status),
+    )
