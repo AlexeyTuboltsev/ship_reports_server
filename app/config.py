@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+try:
+    APP_VERSION = _pkg_version("shipobs-server")
+except PackageNotFoundError:
+    APP_VERSION = "dev"
 
 OSMC_BASE_URL = (
     "https://osmc.noaa.gov/erddap/tabledap/OSMC_flattened.csv"
