@@ -10,20 +10,22 @@ them, and serves a compact JSON API for the Ship Reports OpenCPN plugin.
 - [Docker](https://docs.docker.com/get-docker/) 24+
 - [Docker Compose](https://docs.docker.com/compose/) v2 (bundled with Docker Desktop, or `docker compose` plugin)
 
-## Quick Start
+## Setup
+
+**1. Clone the repository**
+
+```bash
+git clone https://github.com/AlexeyTuboltsev/ship_reports_server.git
+cd ship_reports_server
+```
+
+**2. Create your `.env` file**
 
 ```bash
 cp .env.example .env
-# Edit .env — set PORT, ADMIN_USER, ADMIN_PASSWORD
-docker compose up -d --build
 ```
 
-The server starts on the configured port. On first startup it loads NDBC station
-metadata (~60 s), then begins fetching observations in the background.
-
-## Configuration
-
-Copy `.env.example` to `.env` and edit:
+Then edit `.env` and set a strong admin password:
 
 ```env
 PORT=8080
@@ -31,8 +33,33 @@ ADMIN_USER=admin
 ADMIN_PASSWORD=yourpassword
 ```
 
+> `PORT` is the port the server will listen on. `ADMIN_USER` and `ADMIN_PASSWORD`
+> protect the `/admin` interface — change them from the defaults before exposing
+> the server to a network.
+
+**3. Build and start**
+
+```bash
+docker compose up -d --build
+```
+
+On first startup the server loads NDBC station metadata (allow ~60 s), then
+begins fetching observations in the background.
+
+**4. Verify**
+
+```bash
+docker compose logs -f          # watch startup logs
+curl http://localhost:8080/api/v1/status
+```
+
+Open `http://localhost:8080/admin` in your browser and log in with the
+credentials from `.env`.
+
+## Configuration
+
 Fetch intervals and max observation age are managed at runtime via the admin UI
-and persisted to a Docker volume (`shipobs_data:/data`).
+and persisted to a Docker volume (`shipobs_data:/data`). No restart needed.
 
 ## Admin UI
 
