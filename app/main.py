@@ -285,7 +285,7 @@ async def get_observations(
         raise
 
 
-@app.get("/api/v1/status")
+@app.api_route("/api/v1/status", methods=["GET", "HEAD"])
 async def get_status():
     elapsed = time.monotonic() - _start_time
     days = int(elapsed // 86400)
