@@ -22,8 +22,8 @@
 - [x] EC2 deployment (t4g.micro, eu-central-1)
 - [x] Domain + Cloudflare HTTPS (opencpn-tools.org)
 - [x] Container auto-restart (restart: unless-stopped)
-- [ ] Docker log rotation (max-size: 10m, max-file: 3)
-- [ ] Cloudflare real IP: verify CF-Connecting-IP works correctly for GeoIP
+- [x] Docker log rotation (max-size: 10m, max-file: 3)
+- [x] Cloudflare real IP: CF-Connecting-IP checked first before X-Forwarded-For
 - [ ] External uptime monitoring (UptimeRobot → /api/v1/status)
 
 ## Tests
