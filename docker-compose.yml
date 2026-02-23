@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
+      - "80:${PORT}"
       - "${PORT}:${PORT}"
     environment:
       PORT: "${PORT}"
@@ -12,6 +13,11 @@ services:
     volumes:
       - shipobs_data:/data
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   shipobs_data:

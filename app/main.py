@@ -225,8 +225,10 @@ async def get_observations(
     t0 = time.monotonic()
 
     # Track request stats; fire off GeoIP lookup for new IPs
-    xff = request.headers.get("x-forwarded-for")
-    client_ip = xff.split(",")[0].strip() if xff else (request.client.host if request.client else "unknown")
+    # CF-Connecting-IP is the real client IP when behind Cloudflare
+    cf_ip = request.headers.get("cf-connecting-ip", "").strip()
+    xff = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    client_ip = cf_ip or xff or (request.client.host if request.client else "unknown")
     if stats.record_hit(client_ip):
         asyncio.create_task(_lookup_country(client_ip))
 
