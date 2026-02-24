@@ -59,9 +59,10 @@ curl "http://localhost:8080/api/v1/observations?lat_min=50&lat_max=60&lon_min=-1
 ## Update
 
 ```bash
-docker compose build --pull
-docker compose up -d
+./deploy.sh
 ```
+
+This pulls the latest code and rebuilds the container in one step.
 
 ## Stop / Remove
 
