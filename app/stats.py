@@ -60,6 +60,13 @@ def get_country(ip: str) -> str:
     return _ip_country_cache.get(ip, "")
 
 
+def load_from_log(total: int, by_country: dict[str, int]) -> None:
+    """Seed in-memory counters from persisted log data on startup."""
+    global _total_requests, _country_counts
+    _total_requests = total
+    _country_counts = Counter(by_country)
+
+
 def get_stats() -> dict:
     combined: Counter[str] = Counter(_country_counts)
     pending_hits = sum(_ip_hit_count.values())

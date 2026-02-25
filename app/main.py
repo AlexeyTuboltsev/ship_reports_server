@@ -180,6 +180,10 @@ async def lifespan(app: FastAPI):
     # Load persisted settings before scheduler starts
     settings_store.load(SETTINGS_FILE)
 
+    # Seed in-memory stats from the request log so counts survive restarts
+    _total, _by_country = request_log.load_totals(REQUEST_LOG_FILE)
+    stats.load_from_log(_total, _by_country)
+
     async with httpx.AsyncClient() as client:
         _http_client = client
 

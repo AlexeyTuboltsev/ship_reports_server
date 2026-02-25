@@ -53,6 +53,36 @@ def record(path: str, event: RequestEvent) -> None:
         logger.exception("Failed to write request log to %s", path)
 
 
+def load_totals(path: str) -> tuple[int, dict[str, int]]:
+    """Read total request count and per-country counts from the log file.
+
+    Used to seed in-memory stats on startup so counters survive restarts.
+    """
+    p = Path(path)
+    if not p.exists():
+        return 0, {}
+    try:
+        lines = p.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        logger.exception("Failed to read request log from %s", path)
+        return 0, {}
+
+    total = 0
+    by_country: dict[str, int] = {}
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            d = json.loads(line)
+            total += 1
+            country = d.get("country", "")
+            if country:
+                by_country[country] = by_country.get(country, 0) + 1
+        except Exception:
+            pass
+    return total, by_country
+
+
 def load_page(
     path: str,
     page: int = 1,
