@@ -66,7 +66,7 @@ def _build_url(since: datetime | None = None) -> str:
     """
     cutoff = since if since is not None else datetime.now(timezone.utc) - timedelta(hours=OSMC_LOOKBACK_HOURS)
     time_filter = cutoff.strftime("%Y-%m-%dT%H:%M:%SZ")
-    return f"{OSMC_BASE_URL}?{OSMC_FIELDS}&time>={time_filter}"
+    return f"{OSMC_BASE_URL}?{OSMC_FIELDS}&time%3E%3D{time_filter}"
 
 
 def _parse_float(val: str) -> float | None:
@@ -164,5 +164,9 @@ async def fetch_osmc(client: httpx.AsyncClient, since: datetime | None = None) -
     url = _build_url(since)
     logger.info("Fetching OSMC: %s", url[:120])
     resp = await client.get(url, timeout=HTTP_TIMEOUT_SECONDS)
+    if resp.status_code == 404:
+        # ERDDAP returns 404 when no observations match the time filter
+        logger.info("OSMC: no data in requested time range")
+        return []
     resp.raise_for_status()
     return parse_osmc_csv(resp.text)
